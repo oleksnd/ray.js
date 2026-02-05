@@ -6,9 +6,9 @@
     <title>RAY.js Playground</title>
     <style>
       :root {
-        --bg: #050505;
-        --fg: #f0f0f0;
-        --accent: #24e0ff;
+        --bg: #ffffff;
+        --fg: #1a1a1a;
+        --accent: #1a1a1a;
       }
 
       * {
@@ -35,7 +35,6 @@
         font-size: 14px;
         letter-spacing: 4px;
         color: var(--accent);
-        text-shadow: 0 0 12px rgba(36, 224, 255, 0.6);
         user-select: none;
       }
     </style>
@@ -44,37 +43,68 @@
     <div class="hud">RAY // ACTIVE</div>
     <script src="./ray.js"></script>
     <script>
-      ray.init({ background: "#050505" });
+      ray.init({ background: "#ffffff" });
 
-      const count = 18;
-      const circles = Array.from({ length: count }, () => ({
-        x: Math.random() * window.innerWidth,
-        y: Math.random() * window.innerHeight,
-        r: 10 + Math.random() * 26,
-        vx: -0.6 + Math.random() * 1.2,
-        vy: -0.6 + Math.random() * 1.2,
-        hue: 190 + Math.random() * 90,
-      }));
+      let width = window.innerWidth;
+      let height = window.innerHeight;
+      let progress = 0;
+      let prevX = null;
+      let prevY = null;
 
-      const wrap = (value, max) => {
-        if (value < -60) return max + 60;
-        if (value > max + 60) return -60;
-        return value;
+      const resetStroke = () => {
+        ray.cls("#ffffff");
+        progress = 0;
+        prevX = null;
+        prevY = null;
       };
 
-      ray.loop(() => {
-        ray.cls("rgba(5, 5, 5, 0.12)");
+      const updateSize = () => {
+        const size = ray.size();
+        width = size.width;
+        height = size.height;
+        resetStroke();
+      };
 
-        circles.forEach((c) => {
-          const color = `hsla(${c.hue}, 90%, 60%, 0.9)`;
-          ray.glow(24, color);
-          ray.circle(c.x, c.y, c.r, color);
-          ray.glow(0);
+      window.addEventListener("resize", updateSize, { passive: true });
 
-          c.x = wrap(c.x + c.vx, window.innerWidth);
-          c.y = wrap(c.y + c.vy, window.innerHeight);
+      ray.demoStroke = () => {
+        updateSize();
+        resetStroke();
+        ray.loop((time, delta) => {
+          const dt = delta / 1000;
+          progress += dt * 0.22;
+          if (progress > 1) {
+            resetStroke();
+            return;
+          }
+
+          const p = progress;
+          const startX = width * 0.18;
+          const endX = width * 0.82;
+          const x =
+            startX +
+            (endX - startX) * p +
+            Math.sin(p * Math.PI * 2) * width * 0.035;
+          const centerY = height * 0.5;
+          const y =
+            centerY +
+            Math.sin(p * Math.PI * 2) * height * 0.16 +
+            Math.sin(p * Math.PI) * height * 0.05;
+
+          if (prevX == null || prevY == null) {
+            prevX = x;
+            prevY = y;
+            return;
+          }
+
+          const pressure = Math.max(0.08, 0.95 - p * 0.85);
+          ray.brush(x, y, prevX, prevY, pressure);
+          prevX = x;
+          prevY = y;
         });
-      });
+      };
+
+      ray.demoStroke();
     </script>
   </body>
 </html>

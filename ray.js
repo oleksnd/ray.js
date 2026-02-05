@@ -20,7 +20,12 @@ const ray = (() => {
 	const state = {
 		glowLevel: 0,
 		glowColor: "#ffffff",
+		brushLastTime: 0,
 	};
+
+	const dashDry = [2, 2];
+	const dashClean = [];
+	const inkColor = "#1a1a1a";
 
 	const setFill = (fill) => {
 		if (fill == null) return false;
@@ -31,7 +36,7 @@ const ray = (() => {
 		return true;
 	};
 
-	const setStroke = (stroke, widthValue) => {
+	const setStroke = (stroke, widthValue = 1) => {
 		if (stroke == null) return false;
 		if (stroke !== lastStroke) {
 			ctx.strokeStyle = stroke;
@@ -42,6 +47,12 @@ const ray = (() => {
 			lastLineWidth = widthValue;
 		}
 		return true;
+	};
+
+	const syncStyles = () => {
+		lastFill = ctx.fillStyle;
+		lastStroke = ctx.strokeStyle;
+		lastLineWidth = ctx.lineWidth;
 	};
 
 	const resize = () => {
@@ -149,6 +160,86 @@ const ray = (() => {
 			ctx.moveTo(x1, y1);
 			ctx.lineTo(x2, y2);
 			ctx.stroke();
+			return this;
+		},
+
+		/**
+		 * Draw a marker stroke with even edges.
+		 * @param {number} x
+		 * @param {number} y
+		 * @param {number} px
+		 * @param {number} py
+		 * @param {number} pressure
+		 * @param {string=} color
+		 */
+		marker(x, y, px, py, pressure, color = inkColor) {
+			if (!ctx) return this;
+			const dx = x - px;
+			const dy = y - py;
+			const dist = Math.hypot(dx, dy) || 0.0001;
+			const speed = Math.min(1, dist / 50);
+			const press = Math.max(0, Math.min(1, pressure));
+			const widthValue = Math.max(1, (18 * (press + 0.2)) * (1 - speed * 0.35));
+
+			ctx.save();
+			ctx.globalAlpha = 0.35 + press * 0.65;
+			ctx.lineCap = "round";
+			ctx.lineJoin = "round";
+			setStroke(color, widthValue);
+			ctx.beginPath();
+			ctx.moveTo(px, py);
+			ctx.lineTo(x, y);
+			ctx.stroke();
+			ctx.restore();
+			syncStyles();
+			return this;
+		},
+
+		/**
+		 * Draw a sumi-e ink brush stroke with dry edge dash at high speed.
+		 * @param {number} x
+		 * @param {number} y
+		 * @param {number} px
+		 * @param {number} py
+		 * @param {number} pressure
+		 */
+		brush(x, y, px, py, pressure) {
+			if (!ctx) return this;
+			const dx = x - px;
+			const dy = y - py;
+			const dist = Math.hypot(dx, dy) || 0.0001;
+			const now = performance.now();
+			let dt = now - state.brushLastTime;
+			state.brushLastTime = now;
+			if (!Number.isFinite(dt) || dt <= 0 || dt > 1000) dt = 16.67;
+			const velocity = dist / dt;
+			const press = Math.max(0, Math.min(1, pressure));
+			const widthValue = Math.max(0.8, (16 + press * 20) / (1 + velocity * 1.6));
+			const alphaBase = 0.18 + press * 0.72;
+			const alpha = Math.max(0.08, alphaBase / (1 + velocity * 1.2));
+			const dryThreshold = 0.7;
+			const mx = (px + x) * 0.5;
+			const my = (py + y) * 0.5;
+
+			ctx.save();
+			ctx.globalCompositeOperation = "source-over";
+			ctx.globalAlpha = alpha;
+			ctx.lineCap = "round";
+			ctx.lineJoin = "round";
+			if (velocity > dryThreshold) {
+				ctx.setLineDash(dashDry);
+				ctx.lineDashOffset = 0;
+			} else {
+				ctx.setLineDash(dashClean);
+			}
+			setStroke(inkColor, widthValue);
+			ctx.beginPath();
+			ctx.moveTo(px, py);
+			ctx.quadraticCurveTo(mx, my, x, y);
+			ctx.stroke();
+			ctx.setLineDash(dashClean);
+			ctx.restore();
+			syncStyles();
 			return this;
 		},
 

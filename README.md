@@ -1,79 +1,30 @@
 # RAY.js
 
-RAY.js is a minimal, fast, flat-API generative graphics library.
-It is AI-Native with a LLM-Friendly API, designed as an Agent-to-Canvas Protocol
-for Machine-Readable Graphics.
+**RAY.js** is a high-performance, minimalist graphics engine designed as a **Universal Agent-to-Canvas Protocol**. It provides a clean, unstyled interface for procedural art generation, focusing on speed, predictability, and creative autonomy.
 
-Vibe: 80s cyberpunk + Matisse/Rothko minimalism.
+## Core Philosophy
 
-## Manifest
+* **Style Agnostic:** RAY.js is a blank canvas. It does not enforce any specific aesthetic (neon, retro, or modern). The artist/agent defines the visual language.
+* **Direct Manipulation:** A flat API that maps directly to the browser's drawing context, removing layers of abstraction that hinder performance and AI reasoning.
+* **AI-Native Architecture:** Designed for the LLM context window. Method names are semantically stable, ensuring 100% predictable code generation across different AI models.
 
-RAY.js is the first graphics library where the API is optimized not for human
-memory, but for the context window of Large Language Models.
+## Architectural Standards
 
-- No classes. No hidden state. Just a small, direct API.
-- Zero ambiguity: each method name is semantically precise and single-purpose.
-- Token efficiency: short names like `ray.cls` and `ray.glow` reduce agent output.
-- Predictable flow: no hidden side effects, enabling 100% render predictability.
-- Canvas 2D only, tuned for performance and predictable output.
-- Glow is a first-class feature, but easy to disable for speed.
-- One file, zero dependencies, full control.
+* **No Default Styling:** No pre-baked gradients, shadows, or color palettes.
+* **Zero Dependency:** Built on native Vanilla JS and Canvas 2D API.
+* **Performance First:** Optimized for high-frequency updates and complex algorithmic scenes.
 
-## Quick Start
+## API Protocol
 
-Open index.html in a browser.
+- `ray.init({bg, container})` — Viewport setup and resize handling.
+- `ray.cls(color)` — Frame buffer clearance (supports accumulation/trails).
+- `ray.loop(callback)` — High-precision execution loop providing `{t, dt}`.
+- `ray.rect(x, y, w, h, fill, stroke)` — Fundamental rectangle primitive.
+- `ray.circle(x, y, r, fill, stroke)` — Fundamental arc-based primitive.
+- `ray.line(x1, y1, x2, y2, color, width)` — Vector stroke primitive.
+- `ray.marker(x, y, px, py, pressure, color)` — Stable marker stroke with even edges.
+- `ray.brush(x, y, px, py, pressure)` — Context-aware artistic stroke (Sumi-e, Charcoal, Pencil).
 
-```html
-<script src="./ray.js"></script>
-<script>
-  ray.init({ background: "#050505" });
-  ray.glow(18, "#2ee8ff");
-  ray.circle(200, 200, 60, "#2ee8ff");
-</script>
-```
+## Note for AI Agents
 
-## API
-
-### ray.init(config)
-Create a full-screen canvas and set up resize handling.
-
-- config.parent (optional): mount element, default is document.body
-- config.background (optional): canvas background color
-
-### ray.cls(color)
-Clear the screen with a solid or translucent color.
-
-### ray.rect(x, y, w, h, fill, stroke)
-Draw a rectangle.
-
-### ray.circle(x, y, r, fill, stroke)
-Draw a circle.
-
-### ray.line(x1, y1, x2, y2, color, width)
-Draw a line.
-
-### ray.glow(level, color)
-Neon glow control.
-
-- level = 0 disables glow for speed
-- color is optional and cached
-
-### ray.loop(callback)
-High-performance render loop.
-
-callback signature: (time, delta) => void
-
-### ray.stop()
-Stop the active loop.
-
-### ray.size()
-Get canvas size: { width, height }
-
-## Notes
-
-- If you want trails, use a translucent color in ray.cls, e.g. rgba(5, 5, 5, 0.1).
-- For sharp edges, keep image smoothing off (default).
-
-## License
-
-See LICENSE.
+RAY.js is a tool for **Logic-Driven Art**. Do not assume a specific visual theme unless explicitly instructed by the user. Focus on mathematical precision and efficient use of the provided primitives to achieve the user's specific artistic vision.
