@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RAY.js Playground</title>
+    <style>
+      :root {
+        --bg: #050505;
+        --fg: #f0f0f0;
+        --accent: #24e0ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: "Courier New", Courier, monospace;
+        overflow: hidden;
+      }
+
+      .hud {
+        position: fixed;
+        top: 16px;
+        left: 18px;
+        z-index: 2;
+        font-size: 14px;
+        letter-spacing: 4px;
+        color: var(--accent);
+        text-shadow: 0 0 12px rgba(36, 224, 255, 0.6);
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="hud">RAY // ACTIVE</div>
+    <script src="./ray.js"></script>
+    <script>
+      ray.init({ background: "#050505" });
+
+      const count = 18;
+      const circles = Array.from({ length: count }, () => ({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        r: 10 + Math.random() * 26,
+        vx: -0.6 + Math.random() * 1.2,
+        vy: -0.6 + Math.random() * 1.2,
+        hue: 190 + Math.random() * 90,
+      }));
+
+      const wrap = (value, max) => {
+        if (value < -60) return max + 60;
+        if (value > max + 60) return -60;
+        return value;
+      };
+
+      ray.loop(() => {
+        ray.cls("rgba(5, 5, 5, 0.12)");
+
+        circles.forEach((c) => {
+          const color = `hsla(${c.hue}, 90%, 60%, 0.9)`;
+          ray.glow(24, color);
+          ray.circle(c.x, c.y, c.r, color);
+          ray.glow(0);
+
+          c.x = wrap(c.x + c.vx, window.innerWidth);
+          c.y = wrap(c.y + c.vy, window.innerHeight);
+        });
+      });
+    </script>
+  </body>
+</html>
