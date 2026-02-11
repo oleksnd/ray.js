@@ -4,27 +4,45 @@
 
 ## Core Philosophy
 
-* **Style Agnostic:** RAY.js is a blank canvas. It does not enforce any specific aesthetic (neon, retro, or modern). The artist/agent defines the visual language.
-* **Direct Manipulation:** A flat API that maps directly to the browser's drawing context, removing layers of abstraction that hinder performance and AI reasoning.
-* **AI-Native Architecture:** Designed for the LLM context window. Method names are semantically stable, ensuring 100% predictable code generation across different AI models.
-
-## Architectural Standards
-
-* **No Default Styling:** No pre-baked gradients, shadows, or color palettes.
-* **Zero Dependency:** Built on native Vanilla JS and Canvas 2D API.
-* **Performance First:** Optimized for high-frequency updates and complex algorithmic scenes.
+* **Style Agnostic:** RAY.js is a blank canvas. It does not enforce any aesthetic.
+* **Direct Manipulation:** A flat API mapping directly to the Canvas 2D context.
+* **AI-Native Architecture:** Designed for the LLM context window. 100% predictable code generation.
 
 ## API Protocol
 
-- `ray.init({bg, container})` — Viewport setup and resize handling.
-- `ray.cls(color)` — Frame buffer clearance (supports accumulation/trails).
-- `ray.loop(callback)` — High-precision execution loop providing `{t, dt}`.
-- `ray.rect(x, y, w, h, fill, stroke)` — Fundamental rectangle primitive.
-- `ray.circle(x, y, r, fill, stroke)` — Fundamental arc-based primitive.
-- `ray.line(x1, y1, x2, y2, color, width)` — Vector stroke primitive.
-- `ray.marker(x, y, px, py, pressure, color)` — Stable marker stroke with even edges.
-- `ray.brush(x, y, px, py, pressure)` — Context-aware artistic stroke (Sumi-e, Charcoal, Pencil).
+- `ray.init({parent, background, fullscreen})` — Setup with auto-resize (via ResizeObserver).
+- `ray.cls(color)` — Frame buffer clearance (chainable).
+- `ray.mode(type)` — Set blend mode (e.g., 'multiply', 'screen').
+- `ray.clipStart()` / `ray.clipEnd()` / `ray.clipReset()` — Clipping mask workflow.
+- `ray.layer(id, callback)` — Grouping logic.
+- `ray.grid(type, spacing, color)` — Patterns: 'dots', 'stripes', 'checkerboard'.
+- `ray.organic(seed, complexity, color, threshold)` — Organic blobs/noise patterns.
+- `ray.loop(callback)` — High-precision loop providing `{t, dt}`.
+- `ray.rect(x, y, w, h, fill, stroke)`
+- `ray.circle(x, y, r, fill, stroke)`
+- `ray.poly(x, y, r, sides, angle, fill)` — Regular polygon.
+- `ray.shape(points, fill, stroke)` — Custom polygon from array of points.
+- `ray.line(x1, y1, x2, y2, color, width)`
+- `ray.marker(x, y, px, py, pressure, color)` — Velocity-aware marker.
+- `ray.brush(x, y, px, py, pressure, color)` — Artistic stroke (stable velocity).
+- `ray.buffer(w, h)` — Create an offscreen buffer.
 
-## Note for AI Agents
+## Math & Procedural Tools (Top-Level)
 
-RAY.js is a tool for **Logic-Driven Art**. Do not assume a specific visual theme unless explicitly instructed by the user. Focus on mathematical precision and efficient use of the provided primitives to achieve the user's specific artistic vision.
+- `ray.map(v, a, b, c, d)` — Remap value from range [a,b] to [c,d].
+- `ray.lerp(a, b, t)` — Linear interpolation.
+- `ray.noise(x, y, z)` — High-performance Simplex-like noise.
+- `ray.clamp(v, min, max)` — Keep value within bounds.
+
+## Example Usage
+
+```javascript
+ray.init()
+   .loop((t) => {
+     const n = ray.noise(t * 0.001);
+     const x = ray.map(n, -1, 1, 0, ray.size().width);
+     ray.cls("#050505")
+        .mode('screen')
+        .circle(x, 300, 50, "#ff0044");
+   });
+```

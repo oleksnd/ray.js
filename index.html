@@ -1,110 +1,144 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>RAY.js Playground</title>
-    <style>
-      :root {
-        --bg: #ffffff;
-        --fg: #1a1a1a;
-        --accent: #1a1a1a;
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RAY.js Playground</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --accent: #1a1a1a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: "Courier New", Courier, monospace;
+      overflow: hidden;
+    }
+
+    .hud {
+      position: fixed;
+      top: 16px;
+      left: 18px;
+      z-index: 2;
+      font-size: 14px;
+      letter-spacing: 4px;
+      color: var(--accent);
+      user-select: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="hud">RAY // ACTIVE // CLICK OR SPACE TO RANDOMIZE</div>
+  <script src="./ray.js"></script>
+  <script>
+    ray.init({ background: "#fdf8f0" });
+
+    // State for randomization
+    let blueprint = {
+      seed: Math.random() * 1000,
+      colors: ["#ffcc00", "#55aaff", "#ff99aa", "#ff4422"],
+      offsets: Array.from({ length: 15 }, () => Math.random())
+    };
+
+    const randomize = () => {
+      blueprint.seed = Math.random() * 1000;
+      blueprint.offsets = blueprint.offsets.map(() => Math.random());
+      blueprint.colors = blueprint.colors.sort(() => Math.random() - 0.5);
+    };
+
+    const drawCollage = () => {
+      const { seed, colors, offsets } = blueprint;
+
+      ray.cls("#fdf8f0");
+      ray.mode('source-over');
+
+      // 1. Large Background Shape
+      ray.layer('base_shape', () => {
+        const h0 = offsets[0] * 0.4 + 0.4;
+        const w1 = offsets[1] * 0.7 + 0.1;
+
+        ray.clipStart();
+        ray.shape([
+          [0, ray.height * h0],
+          [ray.width * w1, ray.height * (offsets[2] * 0.3 + 0.5)],
+          [ray.width, ray.height * (offsets[3] * 0.2 + 0.7)],
+          [0, ray.height]
+        ]);
+        ray.clipEnd();
+        ray.rect(0, 0, ray.width, ray.height, colors[0]);
+        ray.grid(offsets[4] > 0.5 ? 'dots' : 'checkerboard', 30 + offsets[5] * 50, "#1a1a1a");
+        ray.clipReset();
+      });
+
+      // 2. Secondary Shape
+      ray.layer('secondary_shape', () => {
+        const x = offsets[6] * ray.width * 0.4;
+        const y = offsets[7] * ray.height * 0.2;
+        const w = 200 + offsets[8] * ray.width * 0.5;
+        const h = 100 + offsets[9] * ray.height * 0.4;
+
+        ray.clipStart();
+        ray.rect(x, y, w, h);
+        ray.clipEnd();
+        ray.rect(0, 0, ray.width, ray.height, colors[1]);
+        ray.organic(seed * 0.05, 0.02, "#1a1a1a", 0.1);
+        ray.clipReset();
+      });
+
+      // 3. Central Geometry (Multiply)
+      ray.layer('multiply_shape', () => {
+        ray.mode('multiply');
+        const cx = ray.width * 0.5;
+        const cy = ray.height * 0.4;
+        const r = 150 + offsets[10] * 200;
+        ray.poly(cx, cy, r, 3 + Math.floor(offsets[11] * 5), seed, "#1a1a1a");
+      });
+
+      // 4. Accent Geo
+      ray.layer('geo_overlay', () => {
+        ray.mode('source-over');
+        const r = 100 + offsets[12] * 100;
+        ray.clipStart();
+        ray.circle(ray.width * offsets[13], ray.height * offsets[14], r);
+        ray.clipEnd();
+        ray.rect(0, 0, ray.width, ray.height, colors[2]);
+        ray.grid('stripes', 25, colors[3]);
+        ray.clipReset();
+      });
+
+      // 5. Dynamic Elements
+      ray.layer('dynamic', () => {
+        ray.organic(seed + Date.now() * 0.0004, 0.04, colors[3], 0.2);
+      });
+    };
+
+    ray.loop((t) => {
+      drawCollage();
+    });
+
+    // Inputs
+    window.addEventListener('mousedown', randomize);
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        randomize();
       }
+    });
+  </script>
+</body>
 
-      * {
-        box-sizing: border-box;
-      }
-
-      html,
-      body {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        background: var(--bg);
-        color: var(--fg);
-        font-family: "Courier New", Courier, monospace;
-        overflow: hidden;
-      }
-
-      .hud {
-        position: fixed;
-        top: 16px;
-        left: 18px;
-        z-index: 2;
-        font-size: 14px;
-        letter-spacing: 4px;
-        color: var(--accent);
-        user-select: none;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="hud">RAY // ACTIVE</div>
-    <script src="./ray.js"></script>
-    <script>
-      ray.init({ background: "#ffffff" });
-
-      let width = window.innerWidth;
-      let height = window.innerHeight;
-      let progress = 0;
-      let prevX = null;
-      let prevY = null;
-
-      const resetStroke = () => {
-        ray.cls("#ffffff");
-        progress = 0;
-        prevX = null;
-        prevY = null;
-      };
-
-      const updateSize = () => {
-        const size = ray.size();
-        width = size.width;
-        height = size.height;
-        resetStroke();
-      };
-
-      window.addEventListener("resize", updateSize, { passive: true });
-
-      ray.demoStroke = () => {
-        updateSize();
-        resetStroke();
-        ray.loop((time, delta) => {
-          const dt = delta / 1000;
-          progress += dt * 0.22;
-          if (progress > 1) {
-            resetStroke();
-            return;
-          }
-
-          const p = progress;
-          const startX = width * 0.18;
-          const endX = width * 0.82;
-          const x =
-            startX +
-            (endX - startX) * p +
-            Math.sin(p * Math.PI * 2) * width * 0.035;
-          const centerY = height * 0.5;
-          const y =
-            centerY +
-            Math.sin(p * Math.PI * 2) * height * 0.16 +
-            Math.sin(p * Math.PI) * height * 0.05;
-
-          if (prevX == null || prevY == null) {
-            prevX = x;
-            prevY = y;
-            return;
-          }
-
-          const pressure = Math.max(0.08, 0.95 - p * 0.85);
-          ray.brush(x, y, prevX, prevY, pressure);
-          prevX = x;
-          prevY = y;
-        });
-      };
-
-      ray.demoStroke();
-    </script>
-  </body>
 </html>
