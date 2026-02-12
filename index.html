@@ -421,8 +421,8 @@
           if (mouse.down) {
             const press = 0.4 + Math.sin(t * 0.005) * 0.3 + 0.2;
             const hue = (seed + t * 0.01) % 360;
-            ray.wet(mouse.x, mouse.y, mouse.px, mouse.py, press, `hsla(${hue}, 70%, 40%, 0.6)`);
-            updateHud(`TOOL: WATERCOLOR // PRESS: ${press.toFixed(2)}`);
+            ray.wetHeavy(mouse.x, mouse.y, mouse.px, mouse.py, press, `hsla(${hue}, 70%, 40%, 0.62)`);
+            updateHud(`TOOL: WATERCOLOR HEAVY // PRESS: ${press.toFixed(2)}`);
           } else updateHud(`TEST: WATERCOLOR`);
         }
       },

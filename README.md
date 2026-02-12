@@ -32,6 +32,8 @@
 - `ray.brush(x, y, px, py, pressure, color)` — Artistic stroke (stable velocity).
 - `ray.dry(x, y, px, py, pressure, color)`
 - `ray.wet(x, y, px, py, pressure, color)`
+- `ray.wetSoft(x, y, px, py, pressure, color)` — Softer watercolor diffusion with lighter pigment edges.
+- `ray.wetHeavy(x, y, px, py, pressure, color)` — Heavy watercolor with stronger blooms and drips.
 - `ray.oil(x, y, px, py, pressure, color)`
 - `ray.knife(x, y, px, py, pressure, color)`
 - `ray.splatter(x, y, intensity, color)`

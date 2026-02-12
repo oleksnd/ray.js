@@ -68,6 +68,44 @@ const ray = (() => {
 				lerp(_grad(noise_p[AB + 1], x, y - 1, z - 1), _grad(noise_p[BB + 1], x - 1, y - 1, z - 1), u), v), w);
 	};
 
+	const paintBlob = (x, y, radius, alpha, color, seed = 0, stretchX = 1, stretchY = 1) => {
+		if (!ctx || radius <= 0) return;
+		const segments = Math.max(10, Math.floor(radius * 0.7));
+		const jitter = radius * 0.38;
+		const oldAlpha = ctx.globalAlpha;
+		ctx.globalAlpha = alpha;
+		setFill(color);
+		ctx.beginPath();
+		for (let i = 0; i <= segments; i++) {
+			const t = i / segments;
+			const a = t * Math.PI * 2;
+			const n = noise(Math.cos(a) * 0.8 + seed, Math.sin(a) * 0.8 - seed, seed * 0.2 + t);
+			const rr = radius + (n - 0.5) * jitter + (Math.random() - 0.5) * jitter * 0.22;
+			const px = x + Math.cos(a) * rr * stretchX;
+			const py = y + Math.sin(a) * rr * stretchY;
+			if (i === 0) ctx.moveTo(px, py);
+			else ctx.lineTo(px, py);
+		}
+		ctx.closePath();
+		ctx.fill();
+		ctx.globalAlpha = oldAlpha;
+	};
+
+	const paintDrip = (x, y, len, widthValue, alpha, color, wobble = 0) => {
+		if (!ctx || len <= 0 || widthValue <= 0) return;
+		const oldAlpha = ctx.globalAlpha;
+		ctx.globalAlpha = alpha;
+		setFill(color);
+		ctx.beginPath();
+		ctx.moveTo(x - widthValue * 0.5, y);
+		ctx.quadraticCurveTo(x - widthValue * (0.25 + wobble), y + len * 0.35, x - widthValue * 0.22, y + len * 0.82);
+		ctx.quadraticCurveTo(x, y + len * 1.08, x + widthValue * 0.22, y + len * 0.82);
+		ctx.quadraticCurveTo(x + widthValue * (0.25 - wobble), y + len * 0.35, x + widthValue * 0.5, y);
+		ctx.closePath();
+		ctx.fill();
+		ctx.globalAlpha = oldAlpha;
+	};
+
 	const setFill = (fill) => {
 		if (fill == null) return false;
 		if (fill !== lastFill) {
@@ -369,44 +407,95 @@ const ray = (() => {
 			return api;
 		},
 
-		wet(x, y, px, py, pressure, color = inkColor, size = 15) {
+		wet(x, y, px, py, pressure, color = inkColor, size = 15, profile = "normal") {
 			if (!ctx) return api;
+			const style = profile === "soft" ? {
+				pigment: 0.8,
+				diffusion: 1.35,
+				edge: 0.8,
+				drip: 0.55,
+			} : profile === "heavy" ? {
+				pigment: 1.35,
+				diffusion: 2.05,
+				edge: 1.5,
+				drip: 2.3,
+			} : {
+				pigment: 1,
+				diffusion: 1,
+				edge: 1,
+				drip: 1,
+			};
+
 			const dist = Math.hypot(x - px, y - py);
-			const steps = Math.max(1, Math.ceil(dist / 4));
+			const steps = Math.max(1, Math.ceil(dist / 5));
 			const press = clamp(pressure, 0, 1);
 			const baseR = size + press * size;
+			const speed = clamp(dist / 24, 0, 1.5);
+			const waterLoad = clamp((1 - speed * 0.62) * (0.6 + press * 0.95), 0.25, 1.5);
 
 			ctx.save();
+			ctx.globalCompositeOperation = "source-over";
 			for (let i = 0; i <= steps; i++) {
 				const t = i / steps;
 				const lx = lerp(px, x, t), ly = lerp(py, y, t);
+				const n = noise(lx * 0.04, ly * 0.04, t * 0.8);
+				const wobble = (noise(lx * 0.07, ly * 0.07, 20 + t) - 0.5) * baseR * 0.22;
+				const cx = lx + wobble;
+				const cy = ly + wobble * 0.35 + waterLoad * 0.28;
 
-				// 1. Core Pigment (slightly more solid)
-				const rCore = baseR * 0.4;
-				api.stamp(lx, ly, rCore, 0.1 + press * 0.1, color);
+				// 1) Main puddle body (irregular, not circular stamps)
+				const rPool = baseR * (0.95 + n * 0.28 + waterLoad * 0.65) * style.diffusion;
+				paintBlob(cx, cy, rPool, 0.012 + waterLoad * 0.025, color, t + seed, 1 + speed * 0.24, 1.08 + waterLoad * 0.65);
+				paintBlob(cx + wobble * 0.2, cy - wobble * 0.15, rPool * 0.88, 0.01 + waterLoad * 0.02, color, t + 11, 0.95, 1.22);
+				paintBlob(cx - wobble * 0.12, cy + wobble * 0.2, rPool * 1.15, 0.008 + waterLoad * 0.016, color, t + 23, 1.12, 1.35);
 
-				// 2. Main Water Wash (soft, irregular)
-				const n = noise(lx * 0.05, ly * 0.05, t);
-				const rWash = baseR * (1.2 + n * 0.5);
-				ctx.shadowBlur = rWash * 0.8;
-				ctx.shadowColor = color;
-				api.stamp(lx, ly, rWash, 0.03 + press * 0.03, color);
+				// 2) Pigment center (dense region)
+				const rCore = baseR * (0.25 + press * 0.22) * style.pigment;
+				paintBlob(cx, cy, rCore, (0.06 + press * 0.09) * style.pigment, color, t + 37, 1, 1.08);
 
-				// 3. Spreading "Blooms" (random puddles)
-				if (Math.random() > 0.9) {
-					const ang = Math.random() * Math.PI * 2;
-					const d = Math.random() * rWash;
-					const bx = lx + Math.cos(ang) * d;
-					const by = ly + Math.sin(ang) * d;
-					const br = rWash * (0.4 + Math.random() * 0.6);
-					ctx.shadowBlur = br * 0.5;
-					api.stamp(bx, by, br, 0.05, color);
+				// 3) Edge deposits around puddle
+				const edgeDots = Math.max(3, Math.floor(5 + waterLoad * 4 * style.edge));
+				for (let e = 0; e < edgeDots; e++) {
+					const a = Math.random() * Math.PI * 2;
+					const rr = rPool * (0.72 + Math.random() * 0.48);
+					const ex = cx + Math.cos(a) * rr;
+					const ey = cy + Math.sin(a) * rr * (1 + waterLoad * 0.22);
+					paintBlob(ex, ey, rCore * (0.14 + Math.random() * 0.26), 0.03 + waterLoad * 0.04, color, e + t, 1, 1);
 				}
 
-				ctx.shadowBlur = 0;
+				// 4) Blooms / backruns
+				if (Math.random() > 0.86 - waterLoad * 0.22 * style.diffusion) {
+					const ang = Math.random() * Math.PI * 2;
+					const d = (0.55 + Math.random() * 0.85) * rPool;
+					const bx = cx + Math.cos(ang) * d;
+					const by = cy + Math.sin(ang) * d;
+					const br = rPool * (0.18 + Math.random() * 0.34);
+					paintBlob(bx, by, br, 0.012 + waterLoad * 0.026, color, t + 71, 1.08, 1.2);
+					paintBlob(bx + Math.cos(ang) * br * 0.35, by + Math.sin(ang) * br * 0.35, br * 0.7, 0.009, color, t + 79, 1.05, 1.25);
+				}
+
+				// 5) Gravity drips (slower stroke + more water)
+				if (waterLoad > 0.75 && speed < 0.55 && Math.random() > 0.9 - 0.16 * style.drip) {
+					const dripLen = baseR * (2 + Math.random() * 4.8) * waterLoad * style.drip;
+					const dripWidth = baseR * (0.16 + Math.random() * 0.28);
+					const dripX = cx + (Math.random() - 0.5) * rCore * 0.8;
+					const dripY = cy + rCore * 0.45;
+					const bend = (Math.random() - 0.5) * 0.35;
+					paintDrip(dripX, dripY, dripLen, dripWidth, 0.02 + waterLoad * 0.045, color, bend);
+					paintBlob(dripX + bend * dripWidth * 0.8, dripY + dripLen * 1.02, dripWidth * (0.55 + waterLoad * 0.35), 0.03, color, t + 101, 1.05, 1.1);
+				}
 			}
 			ctx.restore();
+			syncStyles();
 			return api;
+		},
+
+		wetSoft(x, y, px, py, pressure, color = inkColor, size = 14) {
+			return api.wet(x, y, px, py, pressure, color, size, "soft");
+		},
+
+		wetHeavy(x, y, px, py, pressure, color = inkColor, size = 18) {
+			return api.wet(x, y, px, py, pressure, color, size, "heavy");
 		},
 
 		oil(x, y, px, py, pressure, color, size = 12) {
