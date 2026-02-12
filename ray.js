@@ -18,22 +18,23 @@ const ray = (() => {
 	let running = false;
 	let lastTime = 0;
 	let resizeObserver = null;
+	let ownsCanvas = false;
 
 	const state = {
 		glowLevel: 0,
 		glowColor: "#ffffff",
 	};
 
-	const dashDry = [2, 2];
+	const dashDry = [1, 4, 2, 3];
 	const dashClean = [];
 	const inkColor = "#1a1a1a";
 
-	// --- Math Utilities (Garbage-Free) ---
+	// --- Math Utilities ---
 	const map = (v, a, b, c, d) => (v - a) * (d - c) / (b - a) + c;
 	const lerp = (a, b, t) => a + (b - a) * t;
 	const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
-	// Simple Permutation-based Noise (Garbage-Free)
+	// Simple Permutation-based Noise
 	const noise_p = new Uint8Array(512);
 	let noise_initialized = false;
 	const _initNoise = () => {
@@ -110,195 +111,153 @@ const ray = (() => {
 		syncStyles();
 	};
 
-	return {
-		map,
-		lerp,
-		clamp,
+	const api = {
 		noise,
-		// Accessors for easier use by AI agents
+		lerp,
+		map,
+		clamp,
 		get width() { return width; },
 		get height() { return height; },
+		get ctx() { return ctx; },
 
-		/**
-		 * Create canvas and prepare 2D context.
-		 * @param {{ parent?: HTMLElement, background?: string, fullscreen?: boolean }} config
-		 */
 		init(config = {}) {
-			if (canvas) this.destroy(); // Clean up if re-initializing
+			if (canvas) api.destroy();
 
-			container = config.parent || document.body;
-			canvas = document.createElement("canvas");
-			canvas.setAttribute("aria-label", "RAY canvas");
-			canvas.style.display = "block";
-			canvas.style.background = config.background || "#050505";
-
-			if (config.fullscreen !== false && container === document.body) {
-				canvas.style.position = "fixed";
-				canvas.style.top = "0";
-				canvas.style.left = "0";
-				canvas.style.zIndex = "0";
+			if (config.context) {
+				ctx = config.context;
+				canvas = ctx ? ctx.canvas : null;
+				container = canvas && canvas.parentNode ? canvas.parentNode : document.body;
+				ownsCanvas = false;
+			} else if (config.canvas) {
+				canvas = config.canvas;
+				ctx = canvas.getContext("2d", { alpha: true });
+				container = canvas.parentNode || document.body;
+				ownsCanvas = false;
 			} else {
-				canvas.style.position = "relative";
+				container = config.parent || document.body;
+				canvas = document.createElement("canvas");
+				canvas.setAttribute("aria-label", "RAY canvas");
+				canvas.style.display = "block";
+				canvas.style.background = config.background || "#050505";
+				if (config.fullscreen !== false && container === document.body) {
+					canvas.style.position = "fixed";
+					canvas.style.top = "0"; canvas.style.left = "0"; canvas.style.zIndex = "0";
+				}
+				container.appendChild(canvas);
+				ctx = canvas.getContext("2d", { alpha: true, desynchronized: true });
+				ownsCanvas = true;
 			}
 
-			container.appendChild(canvas);
-			ctx = canvas.getContext("2d", { alpha: true, desynchronized: true });
+			if (!ctx || !canvas) {
+				throw new Error("RAY.js: failed to initialize 2D context.");
+			}
+
 			ctx.imageSmoothingEnabled = false;
-
 			resize();
-
-			if (window.ResizeObserver) {
-				resizeObserver = new ResizeObserver(() => resize());
-				resizeObserver.observe(container === document.body ? document.documentElement : container);
-			} else {
-				window.addEventListener("resize", resize, { passive: true });
+			if (!config.context && !config.canvas) {
+				if (window.ResizeObserver) {
+					resizeObserver = new ResizeObserver(() => resize());
+					resizeObserver.observe(container === document.body ? document.documentElement : container);
+				} else {
+					window.addEventListener("resize", resize, { passive: true });
+				}
 			}
-			return this;
+			return api;
 		},
 
-		/**
-		 * Complete cleanup of the engine and DOM elements.
-		 */
-		destroy() {
-			if (resizeObserver) {
-				resizeObserver.disconnect();
-				resizeObserver = null;
-			}
-			window.removeEventListener("resize", resize);
-			if (canvas && canvas.parentNode) {
-				canvas.parentNode.removeChild(canvas);
-			}
-			canvas = null;
-			ctx = null;
-			running = false;
-			return this;
-		},
-
-		/**
-		 * Set blend mode (globalCompositeOperation).
-		 * @param {string} type
-		 */
-		mode(type) {
-			if (ctx) ctx.globalCompositeOperation = type;
-			return this;
-		},
-
-		/**
-		 * Start a clipping mask. Draw shapes after this, then call clipEnd().
-		 */
-		clipStart() {
-			if (!ctx) return this;
-			ctx.save();
-			ctx.beginPath();
-			return this;
-		},
-
-		/**
-		 * Finalize clipping mask. Everything following this call will be clipped 
-		 * by the shapes drawn between clipStart() and clipEnd().
-		 */
-		clipEnd() {
-			if (!ctx) return this;
-			ctx.clip();
-			return this;
-		},
-
-		/**
-		 * Restore context and remove clipping mask.
-		 */
-		clipReset() {
-			if (!ctx) return this;
-			ctx.restore();
+		target(newCtx, w, h) {
+			if (!newCtx) return api;
+			ctx = newCtx;
+			width = w || (ctx.canvas ? ctx.canvas.width : width);
+			height = h || (ctx.canvas ? ctx.canvas.height : height);
 			syncStyles();
-			return this;
+			return api;
 		},
 
-		/**
-		 * Group operations in a callback. Useful for organization.
-		 */
-		layer(id, callback) {
-			if (typeof callback === "function") callback(id);
-			return this;
+		restore() {
+			if (canvas) {
+				const dpr = window.devicePixelRatio || 1;
+				ctx = canvas.getContext("2d");
+				width = canvas.width / dpr;
+				height = canvas.height / dpr;
+				syncStyles();
+			}
+			return api;
 		},
 
-		/**
-		 * Clear screen with a solid color or translucent wipe.
-		 * @param {string} color
-		 */
+		destroy() {
+			if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
+			window.removeEventListener("resize", resize);
+			if (canvas && canvas.parentNode && ownsCanvas) { canvas.parentNode.removeChild(canvas); }
+			canvas = null; ctx = null; running = false;
+			ownsCanvas = false;
+			return api;
+		},
+
+		mode(type) { if (ctx) ctx.globalCompositeOperation = type; return api; },
+		clipStart() { if (!ctx) return api; ctx.save(); ctx.beginPath(); return api; },
+		clipEnd() { if (!ctx) return api; ctx.clip(); return api; },
+		clipReset() { if (!ctx) return api; ctx.restore(); syncStyles(); return api; },
+		layer(id, callback) { if (typeof callback === "function") callback(id); return api; },
+
 		cls(color = "#000000") {
-			if (!ctx) return this;
+			if (!ctx) return api;
 			const oldFill = lastFill;
-			ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset for clear
+			ctx.save();
+			ctx.setTransform(1, 0, 0, 1, 0, 0);
 			setFill(color);
-			ctx.fillRect(0, 0, canvas.width, canvas.height);
-			const dpr = window.devicePixelRatio || 1;
-			ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // Restore
+			ctx.fillRect(0, 0, ctx.canvas ? ctx.canvas.width : width, ctx.canvas ? ctx.canvas.height : height);
+			ctx.restore();
 			setFill(oldFill);
-			return this;
+			return api;
 		},
 
 		rect(x, y, w, h, fill, stroke) {
-			if (!ctx) return this;
+			if (!ctx) return api;
 			const didFill = setFill(fill);
 			const didStroke = setStroke(stroke);
 			if (didFill) ctx.fillRect(x, y, w, h);
 			if (didStroke) ctx.strokeRect(x, y, w, h);
-			return this;
+			return api;
 		},
 
 		circle(x, y, r, fill, stroke) {
-			if (!ctx) return this;
+			if (!ctx) return api;
 			const didFill = setFill(fill);
 			const didStroke = setStroke(stroke);
-			if (!didFill && !didStroke) return this;
+			if (!didFill && !didStroke) return api;
 			ctx.beginPath();
 			ctx.arc(x, y, r, 0, Math.PI * 2);
 			if (didFill) ctx.fill();
 			if (didStroke) ctx.stroke();
-			return this;
+			return api;
 		},
 
 		line(x1, y1, x2, y2, color, widthValue = 1) {
-			if (!ctx) return this;
+			if (!ctx) return api;
 			setStroke(color, widthValue);
 			ctx.beginPath();
 			ctx.moveTo(x1, y1);
 			ctx.lineTo(x2, y2);
 			ctx.stroke();
-			return this;
+			return api;
 		},
 
-		/**
-		 * Draw a complex polygon from an array of [x, y] points.
-		 * @param {Array<[number, number]>} points
-		 */
 		shape(points, fill, stroke) {
-			if (!ctx || !points || points.length < 2) return this;
+			if (!ctx || !points || points.length < 2) return api;
 			const didFill = setFill(fill);
 			const didStroke = setStroke(stroke);
 			ctx.beginPath();
 			ctx.moveTo(points[0][0], points[0][1]);
-			for (let i = 1; i < points.length; i++) {
-				ctx.lineTo(points[i][0], points[i][1]);
-			}
+			for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
 			ctx.closePath();
 			if (didFill) ctx.fill();
 			if (didStroke) ctx.stroke();
-			return this;
+			return api;
 		},
 
-		/**
-		 * Draw a regular polygon.
-		 * @param {number} x
-		 * @param {number} y
-		 * @param {number} r
-		 * @param {number} sides
-		 * @param {number} angle
-		 * @param {string} fill
-		 * @param {string} stroke
-		 */
 		poly(x, y, r, sides, angle = 0, fill, stroke) {
-			if (!ctx) return this;
+			if (!ctx) return api;
 			const didFill = setFill(fill);
 			const didStroke = setStroke(stroke);
 			ctx.beginPath();
@@ -309,182 +268,280 @@ const ray = (() => {
 			ctx.closePath();
 			if (didFill) ctx.fill();
 			if (didStroke) ctx.stroke();
-			return this;
+			return api;
 		},
 
-		/**
-		 * Fill current viewport (or clip) with a pattern.
-		 * @param {'dots'|'stripes'|'checkerboard'} type
-		 * @param {number} spacing
-		 * @param {string} color
-		 */
 		grid(type, spacing = 20, color = "#ffffff") {
-			if (!ctx) return this;
+			if (!ctx) return api;
 			const oldFill = lastFill;
 			setFill(color);
-			const s = spacing;
+			const s = spacing; const w = width; const h = height;
 			if (type === "dots") {
 				const r = s * 0.15;
-				for (let lx = s / 2; lx < width + s; lx += s) {
-					for (let ly = s / 2; ly < height + s; ly += s) {
-						ctx.beginPath();
-						ctx.arc(lx, ly, r, 0, Math.PI * 2);
-						ctx.fill();
+				for (let lx = s / 2; lx < w + s; lx += s) {
+					for (let ly = s / 2; ly < h + s; ly += s) {
+						ctx.beginPath(); ctx.arc(lx, ly, r, 0, Math.PI * 2); ctx.fill();
 					}
 				}
 			} else if (type === "stripes") {
 				const w2 = s * 0.5;
-				for (let lx = 0; lx < width + s; lx += s) {
-					ctx.fillRect(lx, 0, w2, height);
-				}
+				for (let lx = 0; lx < w + s; lx += s) ctx.fillRect(lx, 0, w2, h);
 			} else if (type === "checkerboard") {
-				for (let lx = 0; lx < width + s; lx += s * 2) {
-					for (let ly = 0; ly < height + s; ly += s * 2) {
-						ctx.fillRect(lx, ly, s, s);
-						ctx.fillRect(lx + s, ly + s, s, s);
+				for (let lx = 0; lx < w + s; lx += s * 2) {
+					for (let ly = 0; ly < h + s; ly += s * 2) {
+						ctx.fillRect(lx, ly, s, s); ctx.fillRect(lx + s, ly + s, s, s);
 					}
 				}
 			}
-			setFill(oldFill);
-			return this;
+			setFill(oldFill); return api;
 		},
 
-		/**
-		 * Generate organic noise-based patterns (tiger/blobs).
-		 * @param {number} seed Offset for noise
-		 * @param {number} complexity Scale of noise
-		 * @param {string} color
-		 * @param {number} threshold Pattern density (0.0 to 1.0)
-		 */
 		organic(seed = 0, complexity = 0.01, color = "#ffffff", threshold = 0.1) {
-			if (!ctx) return this;
+			if (!ctx) return api;
 			const oldFill = lastFill;
 			setFill(color);
-			const step = 6;
-			for (let lx = 0; lx < width; lx += step) {
-				for (let ly = 0; ly < height; ly += step) {
-					if (noise(lx * complexity + seed, ly * complexity + seed) > threshold) {
-						ctx.fillRect(lx, ly, step, step);
-					}
+			const step = 6; const w = width; const h = height;
+			for (let lx = 0; lx < w; lx += step) {
+				for (let ly = 0; ly < h; ly += step) {
+					if (noise(lx * complexity + seed, ly * complexity + seed) > threshold) ctx.fillRect(lx, ly, step, step);
 				}
 			}
-			setFill(oldFill);
-			return this;
+			setFill(oldFill); return api;
 		},
 
-		/**
-		 * Draw a marker stroke with even edges.
-		 * Velocity now calculated via distance between current and previous point.
-		 */
-		marker(x, y, px, py, pressure, color = inkColor) {
-			if (!ctx) return this;
-			const dx = x - px;
-			const dy = y - py;
-			const dist = Math.hypot(dx, dy) || 0.0001;
-			const press = clamp(pressure, 0, 1);
-			const speed = clamp(dist / 40, 0, 1);
-			const widthValue = Math.max(1, (18 * (press + 0.2)) * (1 - speed * 0.35));
+		// --- Advanced Brushes ---
 
-			ctx.save();
-			ctx.globalAlpha = 0.35 + press * 0.65;
-			ctx.lineCap = "round";
-			ctx.lineJoin = "round";
-			setStroke(color, widthValue);
-			ctx.beginPath();
-			ctx.moveTo(px, py);
-			ctx.lineTo(x, y);
-			ctx.stroke();
-			ctx.restore();
-			syncStyles();
-			return this;
-		},
-
-		/**
-		 * Artistic brush stroke.
-		 * Now uses a more stable velocity sensitive calculation.
-		 */
-		brush(x, y, px, py, pressure, color = inkColor) {
-			if (!ctx) return this;
-			const dx = x - px;
-			const dy = y - py;
-			const dist = Math.hypot(dx, dy) || 0.0001;
-
-			const velocity = clamp(dist / 10, 0, 2);
-			const press = clamp(pressure, 0, 1);
-			const widthValue = Math.max(0.8, (16 + press * 20) / (1 + velocity * 1.2));
-			const alpha = clamp((0.18 + press * 0.72) / (1 + velocity * 0.8), 0.05, 1);
-
-			const dryThreshold = 1.2;
-			const mx = (px + x) * 0.5;
-			const my = (py + y) * 0.5;
-
-			ctx.save();
+		stamp(x, y, r, alpha, color) {
+			if (!ctx) return;
+			const oldAlpha = ctx.globalAlpha;
 			ctx.globalAlpha = alpha;
-			ctx.lineCap = "round";
-			ctx.lineJoin = "round";
-			if (velocity > dryThreshold) {
-				ctx.setLineDash(dashDry);
-			} else {
-				ctx.setLineDash(dashClean);
-			}
-			setStroke(color, widthValue);
 			ctx.beginPath();
-			ctx.moveTo(px, py);
-			ctx.quadraticCurveTo(mx, my, x, y);
-			ctx.stroke();
+			ctx.arc(x, y, r, 0, Math.PI * 2);
+			setFill(color);
+			ctx.fill();
+			ctx.globalAlpha = oldAlpha;
+		},
+
+		marker(x, y, px, py, pressure, color = inkColor, size = 6) {
+			if (!ctx) return api;
+			const dist = Math.hypot(x - px, y - py);
+			const steps = Math.max(1, Math.ceil(dist / 2));
+			const press = clamp(pressure, 0, 1);
+			const baseR = size + press * (size * 0.8);
+			for (let i = 0; i <= steps; i++) {
+				const t = i / steps;
+				api.stamp(lerp(px, x, t), lerp(py, y, t), baseR * (1 - t * 0.1), 0.4, color);
+			}
+			return api;
+		},
+
+		brush(x, y, px, py, pressure, color = inkColor, size = 10) {
+			if (!ctx) return api;
+			const dist = Math.hypot(x - px, y - py);
+			const steps = Math.max(1, Math.ceil(dist / 1.5));
+			const press = clamp(pressure, 0, 1);
+			const baseR = size + press * size;
+			for (let i = 0; i <= steps; i++) {
+				const t = i / steps;
+				const lx = lerp(px, x, t), ly = lerp(py, y, t);
+				const n = noise(lx * 0.1, ly * 0.1, t);
+				api.stamp(lx, ly, baseR * (0.8 + n * 0.4), 0.1 + press * 0.1, color);
+			}
+			return api;
+		},
+
+		dry(x, y, px, py, pressure, color = inkColor, size = 8) {
+			if (!ctx) return api;
+			const dist = Math.hypot(x - px, y - py);
+			const steps = Math.max(1, Math.ceil(dist / 2));
+			const press = clamp(pressure, 0.1, 1);
+			const spread = size + press * size;
+			for (let i = 0; i <= steps; i++) {
+				const t = i / steps;
+				const lx = lerp(px, x, t), ly = lerp(py, y, t);
+				const dots = Math.floor(3 + press * 5);
+				for (let j = 0; j < dots; j++) {
+					const offset = (Math.random() - 0.5) * spread;
+					const sx = lx + offset, sy = ly + (Math.random() - 0.5) * spread;
+					if (noise(sx * 0.2, sy * 0.2) > 0) api.stamp(sx, sy, 1 + Math.random(), 0.1 + Math.random() * 0.2, color);
+				}
+			}
+			return api;
+		},
+
+		wet(x, y, px, py, pressure, color = inkColor, size = 15) {
+			if (!ctx) return api;
+			const dist = Math.hypot(x - px, y - py);
+			const steps = Math.max(1, Math.ceil(dist / 4));
+			const press = clamp(pressure, 0, 1);
+			const baseR = size + press * size;
+
+			ctx.save();
+			for (let i = 0; i <= steps; i++) {
+				const t = i / steps;
+				const lx = lerp(px, x, t), ly = lerp(py, y, t);
+
+				// 1. Core Pigment (slightly more solid)
+				const rCore = baseR * 0.4;
+				api.stamp(lx, ly, rCore, 0.1 + press * 0.1, color);
+
+				// 2. Main Water Wash (soft, irregular)
+				const n = noise(lx * 0.05, ly * 0.05, t);
+				const rWash = baseR * (1.2 + n * 0.5);
+				ctx.shadowBlur = rWash * 0.8;
+				ctx.shadowColor = color;
+				api.stamp(lx, ly, rWash, 0.03 + press * 0.03, color);
+
+				// 3. Spreading "Blooms" (random puddles)
+				if (Math.random() > 0.9) {
+					const ang = Math.random() * Math.PI * 2;
+					const d = Math.random() * rWash;
+					const bx = lx + Math.cos(ang) * d;
+					const by = ly + Math.sin(ang) * d;
+					const br = rWash * (0.4 + Math.random() * 0.6);
+					ctx.shadowBlur = br * 0.5;
+					api.stamp(bx, by, br, 0.05, color);
+				}
+
+				ctx.shadowBlur = 0;
+			}
+			ctx.restore();
+			return api;
+		},
+
+		oil(x, y, px, py, pressure, color, size = 12) {
+			if (!ctx) return api;
+			const dist = Math.hypot(x - px, y - py);
+			const steps = Math.max(1, Math.ceil(dist / 0.4));
+			const press = clamp(pressure, 0.2, 1);
+			const angle = Math.atan2(y - py, x - px);
+			const baseR = size + press * size;
+
+			for (let i = 0; i <= steps; i++) {
+				const t = i / steps;
+				const lx = lerp(px, x, t), ly = lerp(py, y, t);
+				const r = baseR;
+
+				// Real hair-like bristle clusters
+				const clusters = 5;
+				for (let j = 0; j < clusters; j++) {
+					const off = (j / clusters - 0.5) * r * 1.2;
+					const bx = lx + Math.cos(angle + Math.PI / 2) * off;
+					const by = ly + Math.sin(angle + Math.PI / 2) * off;
+
+					// Variations in pigment density
+					const dens = 0.05 + Math.random() * 0.15;
+					api.stamp(bx, by, r * 0.4 * (0.8 + Math.random() * 0.4), dens, color);
+
+					// Deep "groove" shadows
+					if (Math.random() > 0.8) api.stamp(bx, by, r * 0.15, 0.1, "#000000");
+				}
+
+				// Top highlight for volume
+				if (i % 3 === 0) {
+					const hx = lx + Math.cos(angle + Math.PI / 2) * r * 0.4;
+					const hy = ly + Math.sin(angle + Math.PI / 2) * r * 0.4;
+					api.stamp(hx, hy, r * 0.3, 0.08, "#ffffff");
+				}
+			}
+			return api;
+		},
+
+		/**
+		 * Palette Knife - Flat, directional, and voluminous application.
+		 */
+		knife(x, y, px, py, pressure, color, size = 45) {
+			if (!ctx) return api;
+			const dist = Math.hypot(x - px, y - py);
+			const angle = Math.atan2(y - py, x - px);
+			const steps = Math.max(1, Math.ceil(dist / 1.5));
+			const press = clamp(pressure, 0.2, 1);
+
+			// Significantly widened and much more sensitive to pressure
+			const kw = size * (0.6 + press * 2.2);
+			const kh = (size * 0.2) + press * (size * 0.15);
+
+			ctx.save();
+			for (let i = 0; i <= steps; i++) {
+				const t = i / steps;
+				const lx = lerp(px, x, t), ly = lerp(py, y, t);
+
+				const dpr = window.devicePixelRatio || 1;
+				ctx.setTransform(dpr, 0, 0, dpr, lx * dpr, ly * dpr);
+				ctx.rotate(angle);
+
+				ctx.globalAlpha = 0.8;
+				setFill(color);
+				ctx.fillRect(-kh / 2, -kw / 2, kh, kw);
+
+				// Directional lighting for volume (impasto effect)
+				ctx.globalAlpha = 0.2;
+				setFill("#ffffff");
+				ctx.fillRect(-kh / 2, -kw / 2, kh * 0.3, kw);
+				setFill("#000000");
+				ctx.fillRect(kh * 0.2, -kw / 2, kh * 0.3, kw);
+
+				if (Math.random() > 0.7) {
+					setFill(color);
+					ctx.globalAlpha = 1.0;
+					ctx.fillRect(kh * 0.4, -kw / 4, kh * 0.2, kw / 2);
+				}
+			}
 			ctx.restore();
 			syncStyles();
-			return this;
+			return api;
+		},
+
+		splatter(x, y, intensity, color = inkColor, size = 1) {
+			if (!ctx) return api;
+			const count = Math.floor(intensity * 15);
+			const spread = intensity * 60 * size;
+			for (let i = 0; i < count; i++) {
+				const ang = Math.random() * Math.PI * 2;
+				const d = Math.pow(Math.random(), 1.5) * spread;
+				const r = (0.8 + Math.random() * 2.5) * (intensity * 0.4 + 0.6) * size;
+				const sx = x + Math.cos(ang) * d, sy = y + Math.sin(ang) * d;
+				api.stamp(sx, sy, r, 0.3 + Math.random() * 0.5, color);
+				// Removed tails for cleaner look
+			}
+			return api;
 		},
 
 		glow(level, color) {
-			if (!ctx) return this;
+			if (!ctx) return api;
 			state.glowLevel = Math.max(0, level || 0);
 			if (color) state.glowColor = color;
 			ctx.shadowBlur = state.glowLevel;
 			ctx.shadowColor = state.glowColor;
-			return this;
+			return api;
 		},
 
 		loop(callback) {
-			if (!ctx || typeof callback !== "function") return this;
-			running = true;
-			lastTime = performance.now();
-
+			if (!ctx || typeof callback !== "function") return api;
+			running = true; lastTime = performance.now();
 			const frame = (time) => {
 				if (!running) return;
-				const delta = time - lastTime;
-				lastTime = time;
-				callback(time, delta);
+				const delta = time - lastTime; lastTime = time;
+				if (callback.length >= 2) callback(time, delta);
+				else callback({ t: time, dt: delta });
 				window.requestAnimationFrame(frame);
 			};
-
-			window.requestAnimationFrame(frame);
-			return this;
+			window.requestAnimationFrame(frame); return api;
 		},
 
-		stop() {
-			running = false;
-			return this;
-		},
-
-		size() {
-			return { width, height };
-		},
-
-		/**
-		 * Experimental: Create a buffer (offscreen canvas).
-		 * @param {number} w 
-		 * @param {number} h 
-		 */
+		stop() { running = false; return api; },
+		size() { return { width, height }; },
 		buffer(w, h) {
 			const bCanvas = document.createElement("canvas");
-			bCanvas.width = w || width;
-			bCanvas.height = h || height;
-			const bCtx = bCanvas.getContext("2d");
+			bCanvas.width = w || width; bCanvas.height = h || height;
+			const bCtx = bCanvas.getContext("2d"); bCtx.imageSmoothingEnabled = false;
 			return { canvas: bCanvas, ctx: bCtx };
 		}
 	};
+
+	return api;
 })();
 
-window.ray = ray;
+if (typeof globalThis !== "undefined") globalThis.ray = ray;
+if (typeof window !== "undefined") window.ray = ray;
+if (typeof module !== "undefined" && module.exports) module.exports = ray;

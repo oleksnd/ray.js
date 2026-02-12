@@ -5,15 +5,26 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RAY.js Playground</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Outfit:wght@300;400;600&family=JetBrains+Mono:wght@400&display=swap"
+    rel="stylesheet">
   <style>
     :root {
-      --bg: #ffffff;
-      --fg: #1a1a1a;
-      --accent: #1a1a1a;
+      --bg: #0a0a0c;
+      --panel-bg: rgba(20, 20, 25, 0.7);
+      --accent: #6d5dfc;
+      --accent-glow: rgba(109, 93, 252, 0.4);
+      --text: #e0e0e6;
+      --text-dim: #9494a3;
+      --border: rgba(255, 255, 255, 0.08);
+      --glass-border: rgba(255, 255, 255, 0.1);
     }
 
     * {
       box-sizing: border-box;
+      -webkit-font-smoothing: antialiased;
     }
 
     html,
@@ -23,121 +34,485 @@
       width: 100%;
       height: 100%;
       background: var(--bg);
-      color: var(--fg);
-      font-family: "Courier New", Courier, monospace;
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
       overflow: hidden;
     }
 
+    /* --- UI Panel --- */
+    .panel {
+      position: fixed;
+      top: 24px;
+      left: 24px;
+      width: 280px;
+      z-index: 10;
+      background: var(--panel-bg);
+      backdrop-filter: blur(12px) saturate(180%);
+      -webkit-backdrop-filter: blur(12px) saturate(180%);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      animation: slideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .header {
+      margin-bottom: 24px;
+    }
+
+    .header h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #fff 0%, #a5a5b0 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header p {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin: 4px 0 0 0;
+    }
+
+    .menu {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .menu-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid transparent;
+      border-radius: 12px;
+      padding: 12px 16px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .menu-item:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: var(--glass-border);
+      transform: translateY(-1px);
+    }
+
+    .menu-item.active {
+      background: var(--accent);
+      box-shadow: 0 4px 15px var(--accent-glow);
+    }
+
+    .menu-item.active .item-name {
+      color: #fff;
+    }
+
+    .menu-item.active .item-icon {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .item-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      transition: background 0.2s;
+    }
+
+    .item-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .controls-hint {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+
+    .controls-hint b {
+      color: var(--text);
+    }
+
+    /* --- Status Hud --- */
     .hud {
       position: fixed;
-      top: 16px;
-      left: 18px;
-      z-index: 2;
-      font-size: 14px;
-      letter-spacing: 4px;
-      color: var(--accent);
-      user-select: none;
+      bottom: 24px;
+      right: 24px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      background: var(--panel-bg);
+      backdrop-filter: blur(8px);
+      padding: 8px 16px;
+      border-radius: 100px;
+      border: 1px solid var(--glass-border);
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    canvas {
+      cursor: crosshair;
     }
   </style>
 </head>
 
 <body>
-  <div class="hud">RAY // ACTIVE // CLICK OR SPACE TO RANDOMIZE</div>
+  <div class="panel">
+    <div class="header">
+      <h1>RAY.js</h1>
+      <p>Core Graphics Engine v1.1</p>
+    </div>
+    <div class="menu" id="demo-menu">
+      <div class="menu-item active" data-demo="collage">
+        <div class="item-icon">🎨</div>
+        <div class="item-name">Generative Collage</div>
+      </div>
+      <div class="menu-item" data-demo="knife">
+        <div class="item-icon">🔪</div>
+        <div class="item-name">Palette Knife</div>
+      </div>
+      <div class="menu-item" data-demo="oil">
+        <div class="item-icon">🖌️</div>
+        <div class="item-name">Oil Brush</div>
+      </div>
+      <div class="menu-item" data-demo="wet">
+        <div class="item-icon">💧</div>
+        <div class="item-name">Watercolor</div>
+      </div>
+      <div class="menu-item" data-demo="dry">
+        <div class="item-icon">🖍️</div>
+        <div class="item-name">Chalk / Dry</div>
+      </div>
+      <div class="menu-item" data-demo="basic">
+        <div class="item-icon">🖊️</div>
+        <div class="item-name">Marker / Pen</div>
+      </div>
+      <div class="menu-item" data-demo="shapes">
+        <div class="item-icon">📐</div>
+        <div class="item-name">Geometry</div>
+      </div>
+      <div class="menu-item" data-demo="patterns">
+        <div class="item-icon">🏁</div>
+        <div class="item-name">Noise & Grids</div>
+      </div>
+      <div class="menu-item" data-demo="math">
+        <div class="item-icon">🔢</div>
+        <div class="item-name">Math Flow</div>
+      </div>
+    </div>
+    <div class="controls-hint">
+      <b>CLICK</b> or <b>SPACE</b> to randomize current scene.<br>
+      <b>MOUSE</b> to interact in supported demos.
+    </div>
+  </div>
+
+  <div class="hud" id="status-hud">DEMO // COLLAGE // SEED: 0.00</div>
+
   <script src="./ray.js"></script>
   <script>
-    ray.init({ background: "#fdf8f0" });
+    // --- State Management ---
+    let currentDemo = 'collage';
+    let seed = Math.random() * 1000;
+    let frameCount = 0;
+    let mouse = { x: 0, y: 0, px: 0, py: 0, down: false };
 
-    // State for randomization
-    let blueprint = {
-      seed: Math.random() * 1000,
-      colors: ["#ffcc00", "#55aaff", "#ff99aa", "#ff4422"],
-      offsets: Array.from({ length: 15 }, () => Math.random())
+    const updateHud = (msg) => {
+      document.getElementById('status-hud').innerText = `DEMO // ${currentDemo.toUpperCase()} // ${msg || ''}`;
     };
 
-    const randomize = () => {
-      blueprint.seed = Math.random() * 1000;
-      blueprint.offsets = blueprint.offsets.map(() => Math.random());
-      blueprint.colors = blueprint.colors.sort(() => Math.random() - 0.5);
+    // --- Demo Implementations ---
+
+    const demos = {
+      collage: {
+        init: () => {
+          ray.cls("#fdf8f0");
+          seed = Math.random() * 1000;
+        },
+        draw: (t) => {
+          const colors = ["#ffcc00", "#55aaff", "#ff99aa", "#ff4422"];
+          const s = seed;
+
+          ray.cls("#fdf8f0");
+          ray.mode('source-over');
+
+          // 1. Large Background Shape
+          ray.layer('base', () => {
+            ray.clipStart();
+            ray.shape([
+              [0, ray.height * 0.4],
+              [ray.width * 0.6, ray.height * 0.5],
+              [ray.width, ray.height * 0.8],
+              [0, ray.height]
+            ]);
+            ray.clipEnd();
+            ray.rect(0, 0, ray.width, ray.height, colors[0]);
+            ray.grid('dots', 40, "rgba(0,0,0,0.2)");
+            ray.clipReset();
+          });
+
+          // 2. Geometric Layer
+          ray.layer('geo', () => {
+            ray.mode('multiply');
+            ray.poly(ray.width * 0.5, ray.height * 0.45, 200, 3, s * 0.001, colors[1]);
+            ray.mode('source-over');
+          });
+
+          // 3. Organic Layer
+          ray.layer('organic', () => {
+            ray.organic(s + t * 0.0001, 0.02, colors[2], 0.1);
+          });
+
+
+          updateHud(`SEED: ${s.toFixed(2)}`);
+        }
+      },
+
+      knife: {
+        init: () => ray.cls("#fdf8f0"),
+        draw: (t) => {
+          if (mouse.down) {
+            const press = 0.4 + Math.sin(t * 0.005) * 0.3 + 0.2;
+            const hue = (seed + t * 0.01) % 360;
+            ray.knife(mouse.x, mouse.y, mouse.px, mouse.py, press, `hsla(${hue}, 60%, 40%, 0.9)`);
+            updateHud(`TOOL: PALETTE KNIFE // PRESS: ${press.toFixed(2)}`);
+          } else updateHud(`TEST: PALETTE KNIFE`);
+        }
+      },
+
+      oil: {
+        init: () => ray.cls("#fdf8f0"),
+        draw: (t) => {
+          if (mouse.down) {
+            const press = 0.4 + Math.sin(t * 0.005) * 0.3 + 0.2;
+            const hue = (seed + t * 0.01) % 360;
+            ray.oil(mouse.x, mouse.y, mouse.px, mouse.py, press, `hsla(${hue}, 60%, 40%, 0.8)`);
+            updateHud(`TOOL: OIL BRUSH // PRESS: ${press.toFixed(2)}`);
+          } else updateHud(`TEST: OIL BRUSH`);
+        }
+      },
+
+      wet: {
+        init: () => ray.cls("#fdf8f0"),
+        draw: (t) => {
+          if (mouse.down) {
+            const press = 0.4 + Math.sin(t * 0.005) * 0.3 + 0.2;
+            const hue = (seed + t * 0.01) % 360;
+            ray.wet(mouse.x, mouse.y, mouse.px, mouse.py, press, `hsla(${hue}, 70%, 40%, 0.6)`);
+            updateHud(`TOOL: WATERCOLOR // PRESS: ${press.toFixed(2)}`);
+          } else updateHud(`TEST: WATERCOLOR`);
+        }
+      },
+
+      dry: {
+        init: () => ray.cls("#fdf8f0"),
+        draw: (t) => {
+          if (mouse.down) {
+            const press = 0.4 + Math.sin(t * 0.005) * 0.3 + 0.2;
+            const hue = (seed + t * 0.01) % 360;
+            ray.dry(mouse.x, mouse.y, mouse.px, mouse.py, press, `hsla(${hue}, 50%, 30%, 0.8)`);
+            updateHud(`TOOL: CHALK // PRESS: ${press.toFixed(2)}`);
+          } else updateHud(`TEST: CHALK`);
+        }
+      },
+
+      basic: {
+        init: () => ray.cls("#fdf8f0"),
+        draw: (t) => {
+          if (mouse.down) {
+            const press = 0.4 + Math.sin(t * 0.005) * 0.3 + 0.2;
+            const hue = (seed + t * 0.01) % 360;
+            if (Math.sin(t * 0.002) > 0) {
+              ray.marker(mouse.x, mouse.y, mouse.px, mouse.py, press, "#1a1a1a");
+              updateHud(`TOOL: MARKER // PRESS: ${press.toFixed(2)}`);
+            } else {
+              ray.brush(mouse.x, mouse.y, mouse.px, mouse.py, press, `hsla(${hue}, 60%, 40%, 0.8)`);
+              updateHud(`TOOL: PEN BRUSH // PRESS: ${press.toFixed(2)}`);
+            }
+          } else updateHud(`TEST: BASIC BRUSHES`);
+        }
+      },
+
+      shapes: {
+        init: () => {
+          ray.cls("#0a0a0c");
+          seed = Math.random() * 1000;
+        },
+        draw: (t) => {
+          ray.cls("#0a0a0c");
+          const s = seed;
+
+          // Show grid patterns
+          ray.grid('checkerboard', 100, "rgba(255,255,255,0.02)");
+
+          // Showcase Polygons
+          for (let i = 0; i < 5; i++) {
+            const x = ray.width * 0.2 + i * (ray.width * 0.15);
+            const y = ray.height * 0.3;
+            const r = 40 + Math.sin(t * 0.002 + i) * 20;
+            ray.poly(x, y, r, 3 + i, t * 0.001, `hsl(${i * 40}, 70%, 50%)`, "#fff");
+          }
+
+          // Showcase Glow & Modes
+          ray.layer('glow_test', () => {
+            ray.glow(20 + Math.sin(t * 0.005) * 10, "#6d5dfc");
+            ray.circle(ray.width * 0.5, ray.height * 0.7, 100, "#6d5dfc");
+            ray.glow(0);
+          });
+
+          // Blend Modes
+          ray.mode('screen');
+          ray.rect(ray.width * 0.4, ray.height * 0.6, 200, 200, "rgba(255, 0, 100, 0.5)");
+          ray.circle(ray.width * 0.6, ray.height * 0.7, 80, "rgba(0, 200, 255, 0.5)");
+          ray.mode('source-over');
+
+          updateHud(`GEO & EFFECTS`);
+        }
+      },
+
+      patterns: {
+        init: () => {
+          ray.cls("#000");
+          seed = Math.random() * 1000;
+        },
+        draw: (t) => {
+          ray.cls("#000");
+          const s = seed;
+
+          // Base Organic Pattern
+          ray.organic(s + t * 0.0002, 0.01, "#222", 0);
+
+          // Colored Organic Overlay
+          ray.mode('screen');
+          ray.organic(s * 1.5, 0.005, "#6d5dfc", 0.2);
+
+          // Grid Overlays
+          ray.mode('overlay');
+          ray.grid('stripes', 30 + Math.sin(t * 0.001) * 10, "rgba(255,255,255,0.1)");
+          ray.mode('source-over');
+
+          updateHud(`NOISE & GRIDS`);
+        }
+      },
+
+      math: {
+        init: () => {
+          ray.cls("#050505");
+        },
+        draw: (t) => {
+          ray.cls("#050505");
+
+          const count = 50;
+          for (let i = 0; i < count; i++) {
+            const norm = i / count;
+            // Use ray.noise
+            const n = ray.noise(norm * 5, t * 0.0005, seed);
+            const x = ray.map(norm, 0, 1, 100, ray.width - 100);
+            const y = ray.height * 0.5 + n * 200;
+
+            const size = ray.map(n, -1, 1, 2, 20);
+            const color = `hsl(${ray.map(n, -1, 1, 200, 300)}, 80%, 60%)`;
+
+            ray.circle(x, y, size, color);
+            if (i > 0) {
+              const prevNorm = (i - 1) / count;
+              const prevN = ray.noise(prevNorm * 5, t * 0.0005, seed);
+              const prevX = ray.map(prevNorm, 0, 1, 100, ray.width - 100);
+              const prevY = ray.height * 0.5 + prevN * 200;
+              ray.line(prevX, prevY, x, y, "rgba(255,255,255,0.2)", 1);
+            }
+          }
+
+          updateHud(`RAY.NOISE / MAP / LERP`);
+        }
+      }
     };
 
-    const drawCollage = () => {
-      const { seed, colors, offsets } = blueprint;
+    // --- Initialization ---
 
-      ray.cls("#fdf8f0");
-      ray.mode('source-over');
+    ray.init({ background: "#0a0a0c" });
 
-      // 1. Large Background Shape
-      ray.layer('base_shape', () => {
-        const h0 = offsets[0] * 0.4 + 0.4;
-        const w1 = offsets[1] * 0.7 + 0.1;
+    const switchDemo = (name) => {
+      currentDemo = name;
+      seed = Math.random() * 1000;
+      demos[name].init();
 
-        ray.clipStart();
-        ray.shape([
-          [0, ray.height * h0],
-          [ray.width * w1, ray.height * (offsets[2] * 0.3 + 0.5)],
-          [ray.width, ray.height * (offsets[3] * 0.2 + 0.7)],
-          [0, ray.height]
-        ]);
-        ray.clipEnd();
-        ray.rect(0, 0, ray.width, ray.height, colors[0]);
-        ray.grid(offsets[4] > 0.5 ? 'dots' : 'checkerboard', 30 + offsets[5] * 50, "#1a1a1a");
-        ray.clipReset();
-      });
-
-      // 2. Secondary Shape
-      ray.layer('secondary_shape', () => {
-        const x = offsets[6] * ray.width * 0.4;
-        const y = offsets[7] * ray.height * 0.2;
-        const w = 200 + offsets[8] * ray.width * 0.5;
-        const h = 100 + offsets[9] * ray.height * 0.4;
-
-        ray.clipStart();
-        ray.rect(x, y, w, h);
-        ray.clipEnd();
-        ray.rect(0, 0, ray.width, ray.height, colors[1]);
-        ray.organic(seed * 0.05, 0.02, "#1a1a1a", 0.1);
-        ray.clipReset();
-      });
-
-      // 3. Central Geometry (Multiply)
-      ray.layer('multiply_shape', () => {
-        ray.mode('multiply');
-        const cx = ray.width * 0.5;
-        const cy = ray.height * 0.4;
-        const r = 150 + offsets[10] * 200;
-        ray.poly(cx, cy, r, 3 + Math.floor(offsets[11] * 5), seed, "#1a1a1a");
-      });
-
-      // 4. Accent Geo
-      ray.layer('geo_overlay', () => {
-        ray.mode('source-over');
-        const r = 100 + offsets[12] * 100;
-        ray.clipStart();
-        ray.circle(ray.width * offsets[13], ray.height * offsets[14], r);
-        ray.clipEnd();
-        ray.rect(0, 0, ray.width, ray.height, colors[2]);
-        ray.grid('stripes', 25, colors[3]);
-        ray.clipReset();
-      });
-
-      // 5. Dynamic Elements
-      ray.layer('dynamic', () => {
-        ray.organic(seed + Date.now() * 0.0004, 0.04, colors[3], 0.2);
+      // Update UI
+      document.querySelectorAll('.menu-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.demo === name);
       });
     };
 
-    ray.loop((t) => {
-      drawCollage();
+    ray.loop(({ t, dt }) => {
+      frameCount++;
+      demos[currentDemo].draw(t);
+
+      // Update mouse previous state after all draws
+      mouse.px = mouse.x;
+      mouse.py = mouse.y;
     });
 
-    // Inputs
-    window.addEventListener('mousedown', randomize);
+    // --- Event Listeners ---
+
+    document.getElementById('demo-menu').addEventListener('click', (e) => {
+      const item = e.target.closest('.menu-item');
+      if (item) switchDemo(item.dataset.demo);
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+    });
+
+    window.addEventListener('mousedown', (e) => {
+      mouse.down = true;
+      mouse.px = mouse.x;
+      mouse.py = mouse.y;
+      if (!['knife', 'oil', 'wet', 'dry', 'basic'].includes(currentDemo)) {
+        seed = Math.random() * 1000;
+        demos[currentDemo].init();
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      mouse.down = false;
+    });
+
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Space') {
         e.preventDefault();
-        randomize();
+        seed = Math.random() * 1000;
+        demos[currentDemo].init();
       }
     });
+
+    // Start with collage
+    switchDemo('collage');
+
   </script>
 </body>
 
